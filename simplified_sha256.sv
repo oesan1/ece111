@@ -136,7 +136,7 @@ module simplified_sha256(input logic clk, reset_n, start,
 			end
 			
 			READ_PAUSE: begin
-				state <= READ
+				state <= READ;
 			end
 			
 			READ: begin
