@@ -105,8 +105,31 @@ module simplified_sha256(input logic clk, reset_n, start,
        end
 	 endfunction
 	
-	
-	
+	function void mem_write();
+			mem_addr = output_addr;
+			mem_write_data = h0;
+			
+			mem_addr = output_addr +1;
+			mem_write_data = h1;
+			
+			mem_addr = output_addr +2;
+			mem_write_data = h2;
+			
+			mem_addr = output_addr +3;
+			mem_write_data = h3;
+			
+			mem_addr = output_addr +4;
+			mem_write_data = h4;
+			
+			mem_addr = output_addr +5;
+			mem_write_data = h5;
+			
+			mem_addr = output_addr +6;
+			mem_write_data = h6;
+			
+			mem_addr = output_addr +7;
+			mem_write_data = h7;
+	endfunction
 	
 	// Defining States
 	enum logic [3:0] {READ_ENABLE=4'b0000, READ=4'b0001, S0=4'b0010, 
@@ -266,29 +289,7 @@ module simplified_sha256(input logic clk, reset_n, start,
 				
 				mem_we <= 1;
 				
-				mem_addr <= output_addr;
-				mem_write_data <= h0;
-				
-				mem_addr <= output_addr +1;
-				mem_write_data <= h1;
-				
-				mem_addr <= output_addr +2;
-				mem_write_data <= h2;
-				
-				mem_addr <= output_addr +3;
-				mem_write_data <= h3;
-				
-				mem_addr <= output_addr +4;
-				mem_write_data <= h4;
-				
-				mem_addr <= output_addr +5;
-				mem_write_data <= h5;
-				
-				mem_addr <= output_addr +6;
-				mem_write_data <= h6;
-				
-				mem_addr <= output_addr +7;
-				mem_write_data <= h7;
+				mem_write();
 				
 				done <= 1;
 				state <= IDLE;
