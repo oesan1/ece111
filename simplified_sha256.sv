@@ -72,6 +72,16 @@ module simplified_sha256(input logic clk, reset_n, start,
 		end
 	endfunction
 	
+	function void print_h();
+		$display("print h");
+		$display("%x\t%x\t%x\t%x\t%x\t%x\t%x\t%x", h0, h1, h2, h3, h4, h5, h6, h7);
+	endfunction
+	
+	function void print_abc();
+		$display("print abc");
+		$display("%x\t%x\t%x\t%x\t%x\t%x\t%x\t%x", a, b, c, d, e, f, g, h);
+	endfunction
+	
 	function void word_exp(msg_num);
 		logic [31:0] t;
 		logic [31:0] sub_temp[16];
@@ -99,7 +109,7 @@ module simplified_sha256(input logic clk, reset_n, start,
 	
 	
 	// Defining States
-	enum logic [2:0] {READ_ENABLE=4'b0000, READ=4'b0001, S0=4'b0010, 
+	enum logic [3:0] {READ_ENABLE=4'b0000, READ=4'b0001, S0=4'b0010, 
 		  WRITE=4'b0011, IDLE=4'b0100, S1 = 4'b0101, S2 = 4'b0110, 
 		  S3 = 4'b0111, READ_PAUSE=4'b1000} state;
 		  
@@ -116,6 +126,8 @@ module simplified_sha256(input logic clk, reset_n, start,
 			IDLE: begin   // IDLE to check start
 				if(start) begin
 					$display("Inside IDLE, msg_num = %d", msg_num);
+					$display("Printing initial h values");
+					print_h();  // TODO
 					state <= READ_ENABLE;
 				end
 				else state <= IDLE;
@@ -127,9 +139,9 @@ module simplified_sha256(input logic clk, reset_n, start,
 				mem_addr <= message_addr + count;
 				$display("Inside READ_ENABLE, msg_num = %d", msg_num);
 				
-				if(count > 0) begin
+				/*if(count > 0) begin
 					$display("temp[%d] = %x", count - 1, temp[count - 1]);
-				end
+				end */
 				
 				state <= READ_PAUSE;
 				
@@ -171,11 +183,11 @@ module simplified_sha256(input logic clk, reset_n, start,
 				padding();
 				$display("Inside S0 (PAD), msg_num = %d\n", msg_num);
 
-				$display("Printing TEMP");
+				/*$display("Printing TEMP");
 				//temp[0] = 32'h1010db8e;  // CHANGE
 				for(i = 0; i < 32; i++) begin
 					$display("%x\t", temp[i]);
-				end
+				end */
 				
 				state <= S1;	
 			end
@@ -196,6 +208,7 @@ module simplified_sha256(input logic clk, reset_n, start,
 				 
 				 
 				 $display("Inside S1 (word_exp), msg_num = %d", msg_num);
+				 print_h();
 				 
 				 $display("Printing W");
 					for(i = 0; i < 16; i++) begin
@@ -222,6 +235,7 @@ module simplified_sha256(input logic clk, reset_n, start,
 			S3: begin
 				// FINAL HASH
 				
+				
 				h0 <= h0 + a;
 				h1 <= h1 + b;
 				h2 <= h2 + c;
@@ -234,6 +248,8 @@ module simplified_sha256(input logic clk, reset_n, start,
 				msg_num = msg_num + 1;
 				
 				$display("Inside final hash, msg_num = %d", msg_num);
+				print_abc();
+				print_h();
 				
 				if(msg_num < msg_total) begin
 					state <= S1;
@@ -245,6 +261,9 @@ module simplified_sha256(input logic clk, reset_n, start,
 			
 			WRITE: begin
 				$display("Inside write, msg_num = %d", msg_num);
+				print_h();
+				
+				
 				mem_we <= 1;
 				
 				mem_addr <= output_addr;
