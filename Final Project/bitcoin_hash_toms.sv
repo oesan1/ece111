@@ -13,10 +13,12 @@ module bitcoin_hash(input logic clk, reset_n, start,
 	logic   [15:0] count = 0;
 	logic   [15:0] msg_size = 19;
 	logic   [31:0] value;
-	logic	  [3:0]  msg_num = 0;               // Keeps track of which block is hashed, check against msg_total
+	logic	  [3:0]  msg_num;               // Keeps track of which block is hashed, check against msg_total
 	logic   [3:0]  msg_total = 2;             // Total num of blocks being hashed
 	int     nonceCount = 0;
+	int     totalNonce = 16;
 	int     isPhase3 = 0;
+	logic	  [31:0] prehash_add[64];
 
 	//logic   [31:0] first = 0;
 	
@@ -58,14 +60,33 @@ module bitcoin_hash(input logic clk, reset_n, start,
 		rightrotate = (x >> r) | (x << (32-r));
 	endfunction
 	
+	// K + W Addition (pipelining)
+	function void sha256_add(input logic [31:0] w, input logic [7:0] t);
+		//if (t < 63) begin
+			prehash_add[t] = sha256_k[t] + w;
+		//end else begin
+		//	sha256_add = sha256_k[0] + w;
+		//end
+	endfunction
+	
+	/*
+	function logic [31:0] sha256_add(input logic [31:0] w, input logic [7:0] t);
+		//if (t < 63) begin
+			prehash_add[t] = sha256_k[t] + w;
+		//end else begin
+		//	sha256_add = sha256_k[0] + w;
+		//end
+	endfunction
+	*/
+	
 	// SHA256 hash round
-	function logic [255:0] sha256_op(input logic [31:0] a, b, c, d, e, f, g, h, w,
+	function logic [255:0] sha256_op(input logic [31:0] a, b, c, d, e, f, g, h, prehash_add,
 												input logic [7:0] t);
 		logic [31:0] S1, S0, ch, maj, t1, t2; // internal signals
 		begin
 			 S1 = rightrotate(e, 6) ^ rightrotate(e, 11) ^ rightrotate(e, 25);
 			 ch = (e & f) ^ ((~e) & g);
-			 t1 = h + S1 + ch + sha256_k[t] + w;
+			 t1 = h + S1 + ch + prehash_add;
 			 S0 = rightrotate(a, 2) ^ rightrotate(a, 13) ^ rightrotate(a, 22);
 			 maj = (a & b) ^ (a & c) ^ (b & c);
 			 t2 = S0 + maj;
@@ -78,6 +99,7 @@ module bitcoin_hash(input logic clk, reset_n, start,
 	function void padding();		// change to void later just to see
 		logic [31:0] m;
 		temp[19] = nonceCount;
+		//$display("Inside padding funct, temp[19] = %x", temp[19]);
 
 		begin
 			temp[20] = 32'h80000000;
@@ -100,16 +122,29 @@ module bitcoin_hash(input logic clk, reset_n, start,
 		$display("%x\t%x\t%x\t%x\t%x\t%x\t%x\t%x", a, b, c, d, e, f, g, h);
 	endfunction
 	*/
-	function void word_exp(msg_num);
+	function void word_exp(input logic [3:0] msg_num);
 		logic [31:0] t;
 		logic [31:0] sub_temp[16];
 		temp[19] = nonceCount;
-		
-		if(msg_num == 0) begin
+		//$display("Inside word exp, temp[19] = %x, msg_num = %d", temp[19], msg_num);
+		if(msg_num < 1) begin
 			sub_temp = temp[0:15];
+			//$display("First block:");
 		end else begin
+			//$display("Second block:");
 			sub_temp = temp[16:31];
 		end
+		
+		
+		// print sub_temp
+		
+		//$display("Printing block");
+		 /*for (t = 0; t < 16; t++) begin
+			$display("\tmessage[%d] = %x", t, sub_temp[t]);
+		 end
+		 */
+		 
+		
 		
 		begin
 			for (t = 0; t < 64; t++) begin
@@ -122,6 +157,11 @@ module bitcoin_hash(input logic clk, reset_n, start,
 			  end
 		   end
        end
+		 /*
+		 for (t = 0; t < 64; t++) begin
+			$display("\tw[%d] = %x", t, w[t]);
+		 end
+		 */
 	 endfunction
 	 
 	 function void word_exp_phase3();
@@ -155,13 +195,13 @@ module bitcoin_hash(input logic clk, reset_n, start,
 	enum logic [3:0] {READ_ENABLE=4'b0000, READ=4'b0001, S0=4'b0010, 
 		  WRITE=4'b0011, IDLE=4'b0100, S1 = 4'b0101, S2 = 4'b0110, 
 		  S3 = 4'b0111, READ_PAUSE=4'b1000, UP_NONCE=4'b1001, PHASE3=4'b1010,
-		  PHASE3_FINAL_HASH=4'b1011} state;
+		  PHASE3_FINAL_HASH=4'b1011, S12=4'b1100} state;
 		  
 		  
 	// FSM	  
 	always_ff @(posedge clk, negedge reset_n) begin
 		if (!reset_n) begin   
-			//$display("Inside reset\n");
+			//$display("Inside reset"); 
 			state <= IDLE;
 		end else
 			
@@ -170,6 +210,7 @@ module bitcoin_hash(input logic clk, reset_n, start,
 			IDLE: begin   // IDLE to check start
 				if(start) begin
 					//$display("Inside IDLE, msg_num = %d", msg_num);
+					msg_num <= 0;
 					//$display("Printing initial h values");
 					//print_h();  // TODO
 					state <= READ_ENABLE;
@@ -183,6 +224,7 @@ module bitcoin_hash(input logic clk, reset_n, start,
 				mem_addr <= message_addr + count;
 				//$display("Inside READ_ENABLE, msg_num = %d", msg_num);
 				
+				// TODO
 				/*if(count > 0) begin
 					$display("temp[%d] = %x", count - 1, temp[count - 1]);
 				end */
@@ -216,6 +258,7 @@ module bitcoin_hash(input logic clk, reset_n, start,
 				mem_we <= 0;
 			
 				nonceCount <= nonceCount + 1;
+				//$display("Inside UP_NONCE, msg_num = %d", msg_num);
 				
 				state <= S1;
 			end
@@ -232,7 +275,7 @@ module bitcoin_hash(input logic clk, reset_n, start,
 				end
 				temp[31] <= 32'd640; */
 				padding();
-				//$display("Inside S0 (PAD), msg_num = %d\n", msg_num);
+				//$display("Inside S0 (PAD), msg_num = %d", msg_num);
 
 				/*$display("Printing TEMP");
 				//temp[0] = 32'h1010db8e;  // CHANGE
@@ -247,8 +290,11 @@ module bitcoin_hash(input logic clk, reset_n, start,
 			S1: begin
 				logic [31:0] i;
 				
+				//$display("Inside S1 (word_exp), msg_num = %d, nonceCount = %d", msg_num, nonceCount);
+				
 				// INITIALIZE HASH
 				if (msg_num < 1 )begin
+					//$display("Setting hash inputs, first block");
 					 a <= h0;
 					 b <= h1;
 					 c <= h2;
@@ -258,6 +304,7 @@ module bitcoin_hash(input logic clk, reset_n, start,
 					 g <= h6;
 					 h <= h7;
 				end else begin
+					//$display("Setting hash inputs, second block");
 					 a <= b10;
 					 b <= b11;
 					 c <= b12;
@@ -266,12 +313,14 @@ module bitcoin_hash(input logic clk, reset_n, start,
 					 f <= b15;
 					 g <= b16;
 					 h <= b17;
+					// $display("Inside S1 (word_exp) initialize sha256 with block 1 hash");
 				end
 					 
 				 word_exp(msg_num);
 				 
 				 
-				 //$display("Inside S1 (word_exp), msg_num = %d", msg_num);
+				 
+			
 				 //print_h();
 				 /*
 				 $display("Printing W");
@@ -280,17 +329,32 @@ module bitcoin_hash(input logic clk, reset_n, start,
 					end
 				*/
 				 
-				 state <= S2;
+				 state <= S12;
+			end
+			
+			S12: begin
+				//prehash
+				logic [31:0] t;
+				for (t = 0; t < 64; t++) begin   //function call
+					//prehash_add[t] = sha256_add(w[t],t);
+					sha256_add(w[t],t);
+					$display("\tprehash_add[%d] = %x", t, prehash_add[t]);
+				end
+				
+				state <= S2;
 			end
 			
 			S2: begin
 				// HASHING
 				logic [31:0] t;
 				for (t = 0; t < 64; t++) begin   //function call
-					{a, b, c, d, e, f, g, h} = sha256_op(a, b, c, d, e, f, g, h, w[t], t);
+					// TODO
+					{a, b, c, d, e, f, g, h} = sha256_op(a, b, c, d, e, f, g, h, prehash_add[t], t);
 				end
 				
 				//$display("Inside S2 (hash call), msg_num = %d", msg_num);
+				
+				
 				
 				if (isPhase3 < 1) begin
 					state <= S3;
@@ -302,6 +366,7 @@ module bitcoin_hash(input logic clk, reset_n, start,
 			
 			S3: begin
 				// FINAL HASH
+				//$display("Inside S3 final hash, msg_num = %d", msg_num);
 				
 				// Hash of block 1, add sha256 to initial hash
 				if (msg_num < 1 )begin
@@ -313,6 +378,7 @@ module bitcoin_hash(input logic clk, reset_n, start,
 					b15 <= h5 + f;
 					b16 <= h6 + g;
 					b17 <= h7 + h;
+					//$display("Inside S3 final hash, created hash of block 1");
 					
 				// Hash of block 2, add sha256 to hash of block 1
 				end else begin
@@ -324,20 +390,22 @@ module bitcoin_hash(input logic clk, reset_n, start,
 					h5 <= b15 + f;
 					h6 <= b16 + g;
 					h7 <= b17 + h;
+					//$display("Inside S3 final hash, create hash of block 2 by add onto block 1");
 				end
 				
 				if(msg_num < msg_total) begin
 					msg_num <= msg_num + 1;
 				end
 				
+				
+				
 				/*
-				$display("Inside final hash, msg_num = %d", msg_num);
 				print_abc();
 				print_h();
 				*/
 				
 				// If just finished block 1 and now need to do block 2
-				if(msg_num < msg_total) begin
+				if(msg_num < msg_total - 1) begin
 					state <= S1;
 				// Else finished phase 2 and now need to do phase 3
 				end else begin
@@ -347,7 +415,18 @@ module bitcoin_hash(input logic clk, reset_n, start,
 			end
 			
 			PHASE3: begin
-			
+				/*
+				$display("Inside PHASE3, msg_num = %d", msg_num);
+				$display("First hash of block 2");
+				$display("\t%x", h0);
+				$display("\t%x", h1);
+				$display("\t%x", h2);
+				$display("\t%x", h3);
+				$display("\t%x", h4);
+				$display("\t%x", h5);
+				$display("\t%x", h6);
+				$display("\t%x", h7);
+				*/
 				 // Initialize hash
 				 a <= f0;
 				 b <= f1;
@@ -366,6 +445,7 @@ module bitcoin_hash(input logic clk, reset_n, start,
 			
 			PHASE3_FINAL_HASH: begin
 			   // FINAL HASH FOR SECOND HASH PHASE 3
+				//$display("Inside PHASE3 final hash, msg_num = %d", msg_num);
 
 			  h0 <= f0 + a;
 			  h1 <= f1 + b;
@@ -376,15 +456,29 @@ module bitcoin_hash(input logic clk, reset_n, start,
 			  h6 <= f6 + g;
 			  h7 <= f7 + h;
 			  
-			  state <= WRITE;
 			  isPhase3 <= 0;
 			  
+			  state <= WRITE;
 			end
 			
 			
 			WRITE: begin
 			
-				//$display("Inside write, msg_num = %d", msg_num);
+			
+				//$display("Inside write, msg_num = %d, nonceCount = %d\n", msg_num, nonceCount);
+			
+				/*
+				$display("\t%x", h0);
+				$display("\t%x", h1);
+				$display("\t%x", h2);
+				$display("\t%x", h3);
+				$display("\t%x", h4);
+				$display("\t%x", h5);
+				$display("\t%x", h6);
+				$display("\t%x", h7);
+				*/
+				
+				
 				//print_h();
 				
 				
@@ -396,7 +490,7 @@ module bitcoin_hash(input logic clk, reset_n, start,
 				
 
 				// If finish writing 16 h0s
-				if(nonceCount > 14) begin
+				if(nonceCount > totalNonce - 1) begin
 					done <= 1;
 					state <= IDLE;
 				end else begin
